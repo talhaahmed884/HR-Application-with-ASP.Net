@@ -28,8 +28,6 @@ public static class PasswordHasher
                 hashString.Append(b.ToString("X2")); // X2 formats as uppercase hexadecimal
             }
 
-            System.Console.WriteLine(hashString.ToString());
-
             return hashString.ToString();
         }
     }
