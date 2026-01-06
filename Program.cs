@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using HR_Application.DataAccess;
 using HR_Application.DataAccess.Repositories;
 using HR_Application.Services;
@@ -12,8 +13,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
-        options.JsonSerializerOptions.PropertyNamingPolicy = null;
-        options.JsonSerializerOptions.WriteIndented = true;
+        options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+        options.JsonSerializerOptions.WriteIndented = false;
     });
 
 builder.Services.AddCors(options =>
