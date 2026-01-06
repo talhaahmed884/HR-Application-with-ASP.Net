@@ -14,10 +14,6 @@ public class UserService : IUserService
     private readonly IRoleRepository _roleRepository;
     private readonly ILogger<UserService> _logger;
 
-    // Role name constants
-    private const string HR_ROLE = "HR";
-    private const string EMPLOYEE_ROLE = "Employee";
-
     public UserService(
         IUserRepository userRepository,
         IAuthRepository authRepository,
@@ -30,20 +26,10 @@ public class UserService : IUserService
         _logger = logger;
     }
 
-    public async Task<(bool Success, EmployeeDto? Employee, ErrorResponse? Error)> GetEmployeeByIdAsync(
-        int employeeId, int requestingUserId, string requestingUserRole)
+    public async Task<(bool Success, EmployeeDto? Employee, ErrorResponse? Error)> GetEmployeeByIdAsync(int employeeId)
     {
         try
         {
-            // Authorization check: Employee can only access their own data
-            if (requestingUserRole != HR_ROLE && requestingUserId != employeeId)
-            {
-                _logger.LogWarning("Unauthorized access attempt - UserId: {UserId} tried to access EmployeeId: {EmployeeId}",
-                    requestingUserId, employeeId);
-                return (false, null, ErrorResponse.FromErrorCode(ErrorCodes.AuthErrors.InsufficientPermissions));
-            }
-
-            // Retrieve the employee
             var employee = await _userRepository.GetByIdAsync(employeeId);
             if (employee == null)
             {
@@ -51,7 +37,6 @@ public class UserService : IUserService
                 return (false, null, ErrorResponse.FromErrorCode(ErrorCodes.EmployeeErrors.UserNotFound));
             }
 
-            // Map to DTO
             var employeeDto = MapToDto(employee);
             return (true, employeeDto, null);
         }
@@ -62,19 +47,10 @@ public class UserService : IUserService
         }
     }
 
-    public async Task<(bool Success, IEnumerable<EmployeeDto>? Employees, ErrorResponse? Error)> GetAllEmployeesAsync(
-        string requestingUserRole)
+    public async Task<(bool Success, IEnumerable<EmployeeDto>? Employees, ErrorResponse? Error)> GetAllEmployeesAsync()
     {
         try
         {
-            // Authorization check: Only HR can view all employees
-            if (requestingUserRole != HR_ROLE)
-            {
-                _logger.LogWarning("Unauthorized access attempt to get all employees - Role: {Role}", requestingUserRole);
-                return (false, null, ErrorResponse.FromErrorCode(ErrorCodes.AuthErrors.InsufficientPermissions));
-            }
-
-            // Retrieve all employees
             var employees = await _userRepository.GetAllAsync();
             var employeeDtos = employees.Select(MapToDto);
 
@@ -88,25 +64,16 @@ public class UserService : IUserService
     }
 
     public async Task<(bool Success, EmployeeDto? Employee, ErrorResponse? Error)> CreateEmployeeAsync(
-        CreateEmployeeDto createEmployeeDto, string requestingUserRole)
+        CreateEmployeeDto createEmployeeDto)
     {
         try
         {
-            // Authorization check: Only HR can create employees
-            if (requestingUserRole != HR_ROLE)
-            {
-                _logger.LogWarning("Unauthorized attempt to create employee - Role: {Role}", requestingUserRole);
-                return (false, null, ErrorResponse.FromErrorCode(ErrorCodes.AuthErrors.InsufficientPermissions));
-            }
-
-            // Validation: Check if email already exists
             if (await _userRepository.EmailExistsAsync(createEmployeeDto.Email))
             {
                 _logger.LogWarning("Attempt to create employee with existing email - Email: {Email}", createEmployeeDto.Email);
                 return (false, null, ErrorResponse.FromErrorCode(ErrorCodes.EmployeeErrors.UserAlreadyExists));
             }
 
-            // Validation: Check if role exists
             var role = await _roleRepository.GetByIdAsync(createEmployeeDto.RoleId);
             if (role == null)
             {
@@ -115,7 +82,6 @@ public class UserService : IUserService
                     "Invalid role specified"));
             }
 
-            // Create employee entity
             var employee = new Employee
             {
                 Email = createEmployeeDto.Email,
@@ -126,10 +92,8 @@ public class UserService : IUserService
                 IsActive = true
             };
 
-            // Save employee to database
             var createdEmployee = await _userRepository.CreateAsync(employee);
 
-            // Hash the password and create password record
             var passwordHash = PasswordHasher.HashPassword(createEmployeeDto.Password);
             var userPassword = new UserPassword
             {
@@ -142,7 +106,6 @@ public class UserService : IUserService
             _logger.LogInformation("Employee created successfully - EmployeeId: {EmployeeId}, Email: {Email}",
                 createdEmployee.Id, createdEmployee.Email);
 
-            // Return the created employee
             var employeeDto = MapToDto(createdEmployee);
             return (true, employeeDto, null);
         }
@@ -154,19 +117,10 @@ public class UserService : IUserService
     }
 
     public async Task<(bool Success, EmployeeDto? Employee, ErrorResponse? Error)> UpdateEmployeeAsync(
-        int employeeId, UpdateEmployeeDto updateEmployeeDto, int requestingUserId, string requestingUserRole)
+        int employeeId, UpdateEmployeeDto updateEmployeeDto, bool isHrUser)
     {
         try
         {
-            // Authorization check: Employee can only update their own data
-            if (requestingUserRole != HR_ROLE && requestingUserId != employeeId)
-            {
-                _logger.LogWarning("Unauthorized update attempt - UserId: {UserId} tried to update EmployeeId: {EmployeeId}",
-                    requestingUserId, employeeId);
-                return (false, null, ErrorResponse.FromErrorCode(ErrorCodes.AuthErrors.InsufficientPermissions));
-            }
-
-            // Retrieve existing employee
             var employee = await _userRepository.GetByIdAsync(employeeId);
             if (employee == null)
             {
@@ -174,7 +128,6 @@ public class UserService : IUserService
                 return (false, null, ErrorResponse.FromErrorCode(ErrorCodes.EmployeeErrors.UserNotFound));
             }
 
-            // Update fields if provided
             if (!string.IsNullOrWhiteSpace(updateEmployeeDto.Name))
                 employee.Name = updateEmployeeDto.Name;
 
@@ -184,12 +137,10 @@ public class UserService : IUserService
             if (updateEmployeeDto.CellNumber != null)
                 employee.CellNumber = updateEmployeeDto.CellNumber;
 
-            // Only HR can update RoleId and IsActive
-            if (requestingUserRole == HR_ROLE)
+            if (isHrUser)
             {
                 if (updateEmployeeDto.RoleId.HasValue)
                 {
-                    // Validate role exists
                     var role = await _roleRepository.GetByIdAsync(updateEmployeeDto.RoleId.Value);
                     if (role == null)
                     {
@@ -203,7 +154,6 @@ public class UserService : IUserService
                     employee.IsActive = updateEmployeeDto.IsActive.Value;
             }
 
-            // Save updates
             var updateSuccess = await _userRepository.UpdateAsync(employee);
             if (!updateSuccess)
             {
@@ -213,7 +163,6 @@ public class UserService : IUserService
 
             _logger.LogInformation("Employee updated successfully - EmployeeId: {EmployeeId}", employeeId);
 
-            // Retrieve updated employee with role information
             var updatedEmployee = await _userRepository.GetByIdAsync(employeeId);
             var employeeDto = MapToDto(updatedEmployee!);
 
@@ -226,18 +175,10 @@ public class UserService : IUserService
         }
     }
 
-    public async Task<(bool Success, ErrorResponse? Error)> DeleteEmployeeAsync(int employeeId, string requestingUserRole)
+    public async Task<(bool Success, ErrorResponse? Error)> DeleteEmployeeAsync(int employeeId)
     {
         try
         {
-            // Authorization check: Only HR can delete employees
-            if (requestingUserRole != HR_ROLE)
-            {
-                _logger.LogWarning("Unauthorized delete attempt - Role: {Role}", requestingUserRole);
-                return (false, ErrorResponse.FromErrorCode(ErrorCodes.AuthErrors.InsufficientPermissions));
-            }
-
-            // Check if employee exists
             var employee = await _userRepository.GetByIdAsync(employeeId);
             if (employee == null)
             {
@@ -245,7 +186,6 @@ public class UserService : IUserService
                 return (false, ErrorResponse.FromErrorCode(ErrorCodes.EmployeeErrors.UserNotFound));
             }
 
-            // Delete employee (cascade delete will remove password record)
             var deleteSuccess = await _userRepository.DeleteAsync(employeeId);
             if (!deleteSuccess)
             {
@@ -263,25 +203,13 @@ public class UserService : IUserService
         }
     }
 
-    public async Task<(bool Success, IEnumerable<RoleCountDto>? RoleCounts, ErrorResponse? Error)> GetRoleCountsAsync(
-        string requestingUserRole)
+    public async Task<(bool Success, IEnumerable<RoleCountDto>? RoleCounts, ErrorResponse? Error)> GetRoleCountsAsync()
     {
         try
         {
-            // Authorization check: Only HR can access reports
-            if (requestingUserRole != HR_ROLE)
-            {
-                _logger.LogWarning("Unauthorized access to role counts report - Role: {Role}", requestingUserRole);
-                return (false, null, ErrorResponse.FromErrorCode(ErrorCodes.AuthErrors.InsufficientPermissions));
-            }
-
-            // Get all roles
             var roles = await _roleRepository.GetAllAsync();
-
-            // Get employee counts by role
             var employeeCounts = await _userRepository.GetEmployeeCountByRoleAsync();
 
-            // Build report
             var roleCounts = roles.Select(role => new RoleCountDto
             {
                 RoleId = role.Id,
@@ -298,22 +226,11 @@ public class UserService : IUserService
         }
     }
 
-    public async Task<(bool Success, IEnumerable<EmployeesByRoleDto>? EmployeesByRole, ErrorResponse? Error)> GetEmployeesByRoleAsync(
-        string requestingUserRole)
+    public async Task<(bool Success, IEnumerable<EmployeesByRoleDto>? EmployeesByRole, ErrorResponse? Error)> GetEmployeesByRoleAsync()
     {
         try
         {
-            // Authorization check: Only HR can access reports
-            if (requestingUserRole != HR_ROLE)
-            {
-                _logger.LogWarning("Unauthorized access to employees by role report - Role: {Role}", requestingUserRole);
-                return (false, null, ErrorResponse.FromErrorCode(ErrorCodes.AuthErrors.InsufficientPermissions));
-            }
-
-            // Get all roles
             var roles = await _roleRepository.GetAllAsync();
-
-            // Build report
             var employeesByRole = new List<EmployeesByRoleDto>();
 
             foreach (var role in roles)

@@ -22,13 +22,13 @@ public class EmployeesController : ControllerBase
     }
 
     [HttpGet("{id}")]
+    [Authorize(Policy = "SameUser")]
     [ProducesResponseType(typeof(ApiResponse<EmployeeDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetEmployee(int id)
     {
-        var (userId, userRole) = GetUserClaims();
-        var (success, employee, error) = await _userService.GetEmployeeByIdAsync(id, userId, userRole);
+        var (success, employee, error) = await _userService.GetEmployeeByIdAsync(id);
 
         if (!success || error != null)
             return StatusCode(error!.StatusCode, error);
@@ -37,13 +37,12 @@ public class EmployeesController : ControllerBase
     }
 
     [HttpGet]
-    [Authorize(Roles = "HR")]
+    [Authorize(Policy = "HrOnly")]
     [ProducesResponseType(typeof(ApiResponse<IEnumerable<EmployeeDto>>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> GetAllEmployees()
     {
-        var (_, userRole) = GetUserClaims();
-        var (success, employees, error) = await _userService.GetAllEmployeesAsync(userRole);
+        var (success, employees, error) = await _userService.GetAllEmployeesAsync();
 
         if (!success || error != null)
             return StatusCode(error!.StatusCode, error);
@@ -55,7 +54,7 @@ public class EmployeesController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "HR")]
+    [Authorize(Policy = "HrOnly")]
     [ProducesResponseType(typeof(ApiResponse<EmployeeDto>), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
@@ -74,8 +73,7 @@ public class EmployeesController : ControllerBase
             return BadRequest(ErrorResponse.ValidationError(validationErrors));
         }
 
-        var (_, userRole) = GetUserClaims();
-        var (success, employee, error) = await _userService.CreateEmployeeAsync(createEmployeeDto, userRole);
+        var (success, employee, error) = await _userService.CreateEmployeeAsync(createEmployeeDto);
 
         if (!success || error != null)
             return StatusCode(error!.StatusCode, error);
@@ -88,6 +86,7 @@ public class EmployeesController : ControllerBase
     }
 
     [HttpPut("{id}")]
+    [Authorize(Policy = "SameUser")]
     [ProducesResponseType(typeof(ApiResponse<EmployeeDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
@@ -106,8 +105,9 @@ public class EmployeesController : ControllerBase
             return BadRequest(ErrorResponse.ValidationError(validationErrors));
         }
 
-        var (userId, userRole) = GetUserClaims();
-        var (success, employee, error) = await _userService.UpdateEmployeeAsync(id, updateEmployeeDto, userId, userRole);
+        var userRole = User.FindFirst(ClaimTypes.Role)?.Value ?? "Employee";
+        var isHrUser = userRole == "HR";
+        var (success, employee, error) = await _userService.UpdateEmployeeAsync(id, updateEmployeeDto, isHrUser);
 
         if (!success || error != null)
             return StatusCode(error!.StatusCode, error);
@@ -116,27 +116,17 @@ public class EmployeesController : ControllerBase
     }
 
     [HttpDelete("{id}")]
-    [Authorize(Roles = "HR")]
+    [Authorize(Policy = "HrOnly")]
     [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> DeleteEmployee(int id)
     {
-        var (_, userRole) = GetUserClaims();
-        var (success, error) = await _userService.DeleteEmployeeAsync(id, userRole);
+        var (success, error) = await _userService.DeleteEmployeeAsync(id);
 
         if (!success || error != null)
             return StatusCode(error!.StatusCode, error);
 
         return Ok(ApiResponse<string>.SuccessResponse($"Employee with ID {id} deleted successfully", null));
-    }
-
-    private (int userId, string userRole) GetUserClaims()
-    {
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value ?? "0";
-        var userId = int.Parse(userIdClaim);
-        var userRole = User.FindFirst(ClaimTypes.Role)?.Value ?? "Employee";
-
-        return (userId, userRole);
     }
 }

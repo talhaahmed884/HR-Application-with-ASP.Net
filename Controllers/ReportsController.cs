@@ -9,7 +9,7 @@ namespace HR_Application.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = "HR")]
+[Authorize(Policy = "HrOnly")]
 public class ReportsController : ControllerBase
 {
     private readonly IUserService _userService;
@@ -26,12 +26,11 @@ public class ReportsController : ControllerBase
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> GetRoleCounts()
     {
-        var userRole = User.FindFirst(ClaimTypes.Role)?.Value ?? "Employee";
-        var (success, roleCounts, error) = await _userService.GetRoleCountsAsync(userRole);
+        var (success, roleCounts, error) = await _userService.GetRoleCountsAsync();
 
         if (!success || error != null)
         {
-            _logger.LogWarning("Failed to retrieve role counts - Role: {Role}", userRole);
+            _logger.LogWarning("Failed to retrieve role counts");
             return StatusCode(error!.StatusCode, error);
         }
 
@@ -46,12 +45,11 @@ public class ReportsController : ControllerBase
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> GetEmployeesByRole()
     {
-        var userRole = User.FindFirst(ClaimTypes.Role)?.Value ?? "Employee";
-        var (success, employeesByRole, error) = await _userService.GetEmployeesByRoleAsync(userRole);
+        var (success, employeesByRole, error) = await _userService.GetEmployeesByRoleAsync();
 
         if (!success || error != null)
         {
-            _logger.LogWarning("Failed to retrieve employees by role - Role: {Role}", userRole);
+            _logger.LogWarning("Failed to retrieve employees by role");
             return StatusCode(error!.StatusCode, error);
         }
 
@@ -66,12 +64,11 @@ public class ReportsController : ControllerBase
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> GetSummary()
     {
-        var userRole = User.FindFirst(ClaimTypes.Role)?.Value ?? "Employee";
-        var (success, roleCounts, error) = await _userService.GetRoleCountsAsync(userRole);
+        var (success, roleCounts, error) = await _userService.GetRoleCountsAsync();
 
         if (!success || error != null)
         {
-            _logger.LogWarning("Failed to retrieve summary - Role: {Role}", userRole);
+            _logger.LogWarning("Failed to retrieve summary");
             return StatusCode(error!.StatusCode, error);
         }
 

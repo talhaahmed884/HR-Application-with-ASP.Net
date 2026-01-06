@@ -1,10 +1,13 @@
 using System.Text;
 using System.Text.Json;
+using HR_Application.Authorization.Handlers;
+using HR_Application.Authorization.Requirements;
 using HR_Application.DataAccess;
 using HR_Application.DataAccess.Repositories;
 using HR_Application.Services;
 using HR_Application.Services.Utils;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 
@@ -32,6 +35,8 @@ var secretKey = jwtSettings["SecretKey"] ?? throw new InvalidOperationException(
 var issuer = jwtSettings["Issuer"] ?? "HRApplication";
 var audience = jwtSettings["Audience"] ?? "HRApplicationUsers";
 
+// CRITICAL: Middleware order matters!
+// Authentication must come before Authorization
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -69,7 +74,19 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
-builder.Services.AddAuthorization();
+builder.Services.AddHttpContextAccessor();
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("SameUser", policy =>
+        policy.Requirements.Add(new SameUserRequirement()));
+
+    options.AddPolicy("HrOnly", policy =>
+        policy.Requirements.Add(new HrOnlyRequirement()));
+});
+
+builder.Services.AddSingleton<IAuthorizationHandler, SameUserAuthorizationHandler>();
+builder.Services.AddSingleton<IAuthorizationHandler, HrOnlyAuthorizationHandler>();
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -129,8 +146,6 @@ builder.Services.AddLogging(logging =>
 
 var app = builder.Build();
 
-// CRITICAL: Middleware order matters!
-// Authentication must come before Authorization
 if (app.Environment.IsDevelopment())
 {
     app.UseDeveloperExceptionPage();
@@ -149,6 +164,8 @@ else
 
 app.UseHttpsRedirection();
 app.UseCors("AllowAll");
+// CRITICAL: Middleware order matters!
+// Authentication must come before Authorization
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
