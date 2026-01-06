@@ -19,36 +19,41 @@ This HR Application API provides a complete employee management system with secu
 
 ## Tech Stack
 
-- **Framework**: ASP.NET Core (.NET 10.0)
+- **Framework**: ASP.NET Core (.NET 8.0)
 - **Database**: SQL Server
 - **ORM**: Dapper (lightweight, high-performance micro-ORM)
 - **Authentication**: JWT (JSON Web Tokens)
-- **Authorization**: Role-based with custom business rules
+- **Authorization**: Policy-based authorization with custom handlers
 - **API Documentation**: Swagger/OpenAPI
+- **Architecture**: Multi-project solution with separate class libraries
 
 ## Architecture
 
-### Layered Architecture
+### Multi-Project Solution Architecture
 
 ```
-┌─────────────────────────────────────────┐
-│  Controllers (API Layer)                │  ← Thin controllers, HTTP only
-├─────────────────────────────────────────┤
-│  Services (Business Logic Layer)        │  ← Validations, authorization
-├─────────────────────────────────────────┤
-│  Repositories (Data Access Layer)       │  ← Dapper queries
-├─────────────────────────────────────────┤
-│  Database (SQL Server)                  │  ← 3NF normalized schema
-└─────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│  HR Application.Controller (Web API)                    │  ← Controllers, Middleware
+├─────────────────────────────────────────────────────────┤
+│  HR Application.Service (Class Library)                 │  ← Business Logic, Auth Handlers
+├─────────────────────────────────────────────────────────┤
+│  HR Application.DataAccess (Class Library)              │  ← Repositories, Dapper
+├─────────────────────────────────────────────────────────┤
+│  HR Application.Model (Class Library)                   │  ← Entities, DTOs, Wrappers
+├─────────────────────────────────────────────────────────┤
+│  Database (SQL Server)                                  │  ← 3NF normalized schema
+└─────────────────────────────────────────────────────────┘
 ```
 
 ### Key Architectural Decisions
 
-1. **Repository Pattern**: Abstracts data access logic
-2. **Service Layer**: Encapsulates business rules and authorization
-3. **DTOs**: Separate data transfer objects from entities
-4. **Custom Error Codes**: Standardized error handling with specific error codes
-5. **API Response Wrappers**: Consistent response format across all endpoints
+1. **Multi-Project Structure**: Separate projects for each layer
+2. **Repository Pattern**: Abstracts data access logic
+3. **Service Layer**: Encapsulates business rules
+4. **Policy-Based Authorization**: Custom authorization handlers separate from business logic
+5. **DTOs**: Separate data transfer objects from entities
+6. **Custom Error Codes**: Standardized error handling with specific error codes
+7. **API Response Wrappers**: Consistent response format across all endpoints
 
 ## Database Design
 
@@ -79,9 +84,6 @@ This HR Application API provides a complete employee management system with secu
 - UserId (PK, FK → Employees)
 - PasswordHash
 - Salt
-- LastPasswordChange
-- FailedLoginAttempts
-- LockedUntil
 - CreatedAt, UpdatedAt
 ```
 
@@ -95,7 +97,7 @@ This HR Application API provides a complete employee management system with secu
 
 ### Prerequisites
 
-- .NET 10.0 SDK
+- .NET 8.0 SDK
 - SQL Server (LocalDB, Express, or Full)
 - SQL Server Management Studio (SSMS) or Azure Data Studio (optional)
 
@@ -117,25 +119,26 @@ This HR Application API provides a complete employee management system with secu
 
 3. **Update connection string** (if needed)
 
-   Edit `appsettings.json`:
+   Edit `HR Application.Controller/appsettings.json`:
    ```json
    "ConnectionStrings": {
      "DefaultConnection": "Server=YOUR_SERVER;Database=HRApplicationDB;..."
    }
    ```
 
-4. **Restore NuGet packages**
+4. **Restore NuGet packages** (solution level)
    ```bash
-   dotnet restore
+   dotnet restore "HR Application.sln"
    ```
 
-5. **Build the project**
+5. **Build the solution**
    ```bash
-   dotnet build
+   dotnet build "HR Application.sln"
    ```
 
 6. **Run the application**
    ```bash
+   cd "HR Application.Controller"
    dotnet run
    ```
 
@@ -162,7 +165,6 @@ After running the seed data script:
 | Method | Endpoint | Description | Auth Required |
 |--------|----------|-------------|---------------|
 | POST | `/api/auth/login` | Login and get JWT token | No |
-| GET | `/api/auth/health` | Health check | No |
 
 ### Employees
 
@@ -232,40 +234,48 @@ After running the seed data script:
 - ✅ Can delete employees
 - ✅ Can access all reporting endpoints
 
-### Account Lockout Policy
-- After **5 failed login attempts**, account is locked for **15 minutes**
-- Failed attempts counter resets on successful login
-
 ## Project Structure
 
 ```
-HR Application/
-├── Controllers/
+HR Application/ (Solution Root)
+├── HR Application.sln                 # Solution file
+│
+├── HR Application.Controller/         # Web API Project
 │   ├── AuthController.cs              # Login endpoints
 │   ├── EmployeesController.cs         # Employee CRUD
-│   └── ReportsController.cs           # HR reports
+│   ├── ReportsController.cs           # HR reports
+│   ├── Program.cs                     # App entry, DI, middleware
+│   ├── appsettings.json               # Configuration
+│   ├── appsettings.Development.json   # Development config
+│   └── HR Application.Controller.csproj
 │
-├── Services/
+├── HR Application.Service/            # Business Logic Class Library
 │   ├── IAuthService.cs                # Auth interface
 │   ├── AuthService.cs                 # Auth implementation
 │   ├── IUserService.cs                # User service interface
 │   ├── UserService.cs                 # User service implementation
-│   └── Utils/
-│       ├── PasswordHasher.cs          # SHA256 password hashing
-│       └── JwtTokenGenerator.cs       # JWT token generation
+│   ├── Authorization/
+│   │   └── Handlers/
+│   │       ├── HrOnlyAuthorizationHandler.cs
+│   │       └── SameUserAuthorizationHandler.cs
+│   ├── Utils/
+│   │   ├── PasswordHasher.cs          # SHA256 password hashing
+│   │   └── JwtTokenGenerator.cs       # JWT token generation
+│   └── HR Application.Service.csproj
 │
-├── DataAccess/
+├── HR Application.DataAccess/         # Data Access Class Library
 │   ├── IDbConnectionFactory.cs        # DB connection interface
 │   ├── SqlConnectionFactory.cs        # SQL Server connection
-│   └── Repositories/
-│       ├── IUserRepository.cs         # User data interface
-│       ├── UserRepository.cs          # User data implementation
-│       ├── IAuthRepository.cs         # Auth data interface
-│       ├── AuthRepository.cs          # Auth data implementation
-│       ├── IRoleRepository.cs         # Role data interface
-│       └── RoleRepository.cs          # Role data implementation
+│   ├── Repositories/
+│   │   ├── IUserRepository.cs         # User data interface
+│   │   ├── UserRepository.cs          # User data implementation
+│   │   ├── IAuthRepository.cs         # Auth data interface
+│   │   ├── AuthRepository.cs          # Auth data implementation
+│   │   ├── IRoleRepository.cs         # Role data interface
+│   │   └── RoleRepository.cs          # Role data implementation
+│   └── HR Application.DataAccess.csproj
 │
-├── Models/
+├── HR Application.Model/              # Shared Models Class Library
 │   ├── Entities/
 │   │   ├── Employee.cs                # Employee entity
 │   │   ├── UserPassword.cs            # Password entity
@@ -280,53 +290,64 @@ HR Application/
 │   │   └── EmployeesByRoleDto.cs      # Employees by role
 │   ├── Enums/
 │   │   └── ErrorCodes.cs              # Custom error codes
-│   └── Wrappers/
-│       ├── ApiResponse.cs             # Success response wrapper
-│       └── ErrorResponse.cs           # Error response wrapper
+│   ├── Wrappers/
+│   │   ├── ApiResponse.cs             # Success response wrapper
+│   │   └── ErrorResponse.cs           # Error response wrapper
+│   ├── Authorization/
+│   │   └── Requirements/
+│   │       ├── HrOnlyRequirement.cs
+│   │       └── SameUserRequirement.cs
+│   └── HR Application.Model.csproj
 │
-├── Database/
-│   ├── Schema.sql                     # Database schema
-│   └── SeedData.sql                   # Initial data
-│
-├── Program.cs                         # App entry, DI, middleware
-├── appsettings.json                   # Configuration
-└── HR Application.csproj              # Project file
+└── Database/
+    ├── Schema.sql                     # Database schema
+    └── SeedData.sql                   # Initial data
 ```
 
 ## Key Features
 
-### 1. Secure Password Management
+### 1. Multi-Project Architecture
+- Separate class libraries for each layer
+- Clear separation of concerns
+- Independent testing and deployment
+- Reusable components
+
+### 2. Secure Password Management
 - SHA256 password hashing
 - Passwords stored in separate table
 - Password validation on login
-- Account lockout after failed attempts
 
-### 2. JWT Token Management
+### 3. JWT Token Management
 - Configurable token expiration
 - Signed with secret key
 - Contains user ID, email, and role claims
 - Validated on every protected endpoint
 
-### 3. Dapper for Data Access
+### 4. Policy-Based Authorization
+- Custom authorization handlers (HrOnly, SameUser)
+- Declarative authorization via `[Authorize(Policy = "...")]`
+- Authorization logic separate from business logic
+- Framework-level security enforcement
+
+### 5. Dapper for Data Access
 - Lightweight and fast
 - Parameterized queries (SQL injection prevention)
 - Proper connection disposal with `using` statements
 - Async operations throughout
 
-### 4. Comprehensive Error Handling
+### 6. Comprehensive Error Handling
 - Custom error codes (1000s, 2000s, 3000s)
 - HTTP status code mapping
 - User-friendly error messages
 - Validation error details
 
-### 5. Clean Code Practices
+### 7. Clean Code Practices
 - Dependency Injection throughout
 - Interface-based design
 - Async/await for all I/O operations
 - Structured logging with `ILogger`
-- XML documentation comments
 
-### 6. API Documentation
+### 8. API Documentation
 - Swagger/OpenAPI integration
 - JWT authentication in Swagger UI
 - Request/response examples
@@ -413,16 +434,18 @@ curl -X GET "http://localhost:5222/api/reports/role-counts" \
 ## Learning Resources
 
 This project demonstrates:
+- ✅ Multi-project solution architecture
 - ✅ Clean Architecture principles
 - ✅ Repository and Service patterns
 - ✅ Dependency Injection
 - ✅ JWT Authentication
-- ✅ Role-based Authorization
+- ✅ Policy-based Authorization with custom handlers
 - ✅ Dapper ORM usage
 - ✅ ADO.NET connection management
 - ✅ RESTful API design
 - ✅ Error handling best practices
 - ✅ SQL Server database design (3NF)
+- ✅ Separation of concerns across projects
 
 ## License
 
